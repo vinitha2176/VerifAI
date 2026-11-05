@@ -11,6 +11,9 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 import pymupdf as fitz
+
+sys.stdout.reconfigure(encoding="utf-8")
+
 from app.services.extraction import extract_text_from_pdf_bytes
 from app.services.risk_engine import RiskEngine
 from app.services.analysis_service import AnalysisService

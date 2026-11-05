@@ -1,8 +1,13 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Shield, ExternalLink, AlertCircle } from 'lucide-react';
+import { API_BASE_URL } from '../services/api';
 
 export const Footer = () => {
+  const normalizedApiUrl = (API_BASE_URL || 'http://localhost:8000').replace(/\/+$/, '');
+  const swaggerDocsUrl = `${normalizedApiUrl}/docs`;
+  const healthEndpointUrl = `${normalizedApiUrl}/api/health`;
+
   return (
     <footer className="bg-ivory-200 border-t border-ivory-300 mt-20 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -65,7 +70,7 @@ export const Footer = () => {
             <ul className="space-y-2 text-sm text-charcoal-600">
               <li>
                 <a
-                  href="http://localhost:8000/docs"
+                  href={swaggerDocsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 hover:text-forest-800 transition-colors"
@@ -75,7 +80,7 @@ export const Footer = () => {
               </li>
               <li>
                 <a
-                  href="http://localhost:8000/api/health"
+                  href={healthEndpointUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 hover:text-forest-800 transition-colors"

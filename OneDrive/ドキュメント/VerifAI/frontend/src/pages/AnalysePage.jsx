@@ -30,12 +30,18 @@ export const AnalysePage = () => {
   // Submission & error state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState(null);
+  const [errorCode, setErrorCode] = useState(null);
 
   // Character limits
   const MIN_CHARS = 15;
   const MAX_CHARS = 50000;
   const currentLength = textInput.length;
   const isTextValid = currentLength >= MIN_CHARS && currentLength <= MAX_CHARS;
+  const isFileError = activeTab === 'pdf' && Boolean(errorMessage) && !selectedFile;
+  const isUnrelatedError =
+    errorCode === 'UNRELATED_DOCUMENT' ||
+    errorCode === 'INSUFFICIENT_CONTENT' ||
+    Boolean(errorMessage && errorMessage.includes("doesn't appear to be a job posting"));
 
   // Sample presets for quick testing
   const sampleLegitimate = `Senior Backend Engineer
@@ -63,6 +69,7 @@ Payment must be remitted via UPI or wire transfer to our recruitment coordinator
   const handlePasteSample = (sample) => {
     setTextInput(sample);
     setErrorMessage(null);
+    setErrorCode(null);
     setActiveTab('text');
   };
 
@@ -70,6 +77,7 @@ Payment must be remitted via UPI or wire transfer to our recruitment coordinator
     setTextInput('');
     setSelectedFile(null);
     setErrorMessage(null);
+    setErrorCode(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -88,21 +96,47 @@ Payment must be remitted via UPI or wire transfer to our recruitment coordinator
 
   const validateAndSetFile = (file) => {
     setErrorMessage(null);
+    setErrorCode(null);
     if (!file) return;
 
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
+    const fileName = file.name || '';
+    const hasPdfExtension = fileName.toLowerCase().endsWith('.pdf');
+    const hasPdfMimeType = Boolean(file.type && file.type.toLowerCase() === 'application/pdf');
+
+    if (!hasPdfExtension) {
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       setErrorMessage('Unsupported file format. Please upload a standard PDF document (.pdf).');
+      return;
+    }
+
+    if (!hasPdfMimeType) {
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setErrorMessage(
+        'Invalid file type. The selected file has a .pdf extension but is not recognized as a valid PDF document (MIME type must be application/pdf).'
+      );
+      return;
+    }
+
+    if (file.size === 0) {
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setErrorMessage('The selected file is empty (0 bytes). Please upload a valid PDF document.');
       return;
     }
 
     const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
     if (file.size > MAX_SIZE) {
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
       const mb = (file.size / (1024 * 1024)).toFixed(1);
       setErrorMessage(`File size (${mb} MB) exceeds the maximum allowed limit of 10 MB.`);
       return;
     }
 
     setSelectedFile(file);
+    setErrorMessage(null);
   };
 
   const handleDrop = (e) => {
@@ -111,6 +145,10 @@ Payment must be remitted via UPI or wire transfer to our recruitment coordinator
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       validateAndSetFile(e.dataTransfer.files[0]);
+    } else {
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setErrorMessage('No file detected. Please drag & drop a standard PDF document (.pdf).');
     }
   };
 
@@ -124,18 +162,22 @@ Payment must be remitted via UPI or wire transfer to our recruitment coordinator
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage(null);
+    setErrorCode(null);
 
     if (activeTab === 'text') {
       if (!textInput.trim()) {
         setErrorMessage('Please paste or type the recruitment text to analyze.');
+        setErrorCode(null);
         return;
       }
       if (currentLength < MIN_CHARS) {
         setErrorMessage(`Input is too short. Please provide at least ${MIN_CHARS} characters of job content.`);
+        setErrorCode(null);
         return;
       }
       if (currentLength > MAX_CHARS) {
         setErrorMessage(`Input exceeds the maximum limit of ${MAX_CHARS.toLocaleString()} characters.`);
+        setErrorCode(null);
         return;
       }
 
@@ -145,12 +187,25 @@ Payment must be remitted via UPI or wire transfer to our recruitment coordinator
         navigate(`/results/${result.id}`, { state: { result } });
       } catch (err) {
         setErrorMessage(err.message || 'Analysis failed. Please check the backend connection.');
+        setErrorCode(err.code || (err.message && err.message.includes("doesn't appear to be a job posting") ? 'UNRELATED_DOCUMENT' : null));
       } finally {
         setIsSubmitting(false);
       }
     } else {
       if (!selectedFile) {
         setErrorMessage('Please select or drop a valid PDF document first.');
+        setErrorCode(null);
+        return;
+      }
+
+      const hasPdfExtension = Boolean(selectedFile.name && selectedFile.name.toLowerCase().endsWith('.pdf'));
+      const hasPdfMimeType = Boolean(selectedFile.type && selectedFile.type.toLowerCase() === 'application/pdf');
+
+      if (!hasPdfExtension || !hasPdfMimeType) {
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        setErrorMessage('Invalid file type. Please upload a genuine PDF document (.pdf with MIME type application/pdf).');
+        setErrorCode(null);
         return;
       }
 
@@ -160,6 +215,7 @@ Payment must be remitted via UPI or wire transfer to our recruitment coordinator
         navigate(`/results/${result.id}`, { state: { result } });
       } catch (err) {
         setErrorMessage(err.message || 'PDF extraction and analysis failed.');
+        setErrorCode(err.code || (err.message && err.message.includes("doesn't appear to be a job posting") ? 'UNRELATED_DOCUMENT' : null));
       } finally {
         setIsSubmitting(false);
       }
@@ -190,7 +246,7 @@ Payment must be remitted via UPI or wire transfer to our recruitment coordinator
         <div className="flex items-center gap-2 border-b border-ivory-200 pb-4">
           <button
             type="button"
-            onClick={() => { setActiveTab('text'); setErrorMessage(null); }}
+            onClick={() => { setActiveTab('text'); setErrorMessage(null); setErrorCode(null); }}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'text'
                 ? 'bg-forest-800 text-ivory-100 shadow-sm'
@@ -203,7 +259,7 @@ Payment must be remitted via UPI or wire transfer to our recruitment coordinator
 
           <button
             type="button"
-            onClick={() => { setActiveTab('pdf'); setErrorMessage(null); }}
+            onClick={() => { setActiveTab('pdf'); setErrorMessage(null); setErrorCode(null); }}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'pdf'
                 ? 'bg-forest-800 text-ivory-100 shadow-sm'
@@ -235,7 +291,10 @@ Payment must be remitted via UPI or wire transfer to our recruitment coordinator
                 value={textInput}
                 onChange={(e) => {
                   setTextInput(e.target.value);
-                  if (errorMessage) setErrorMessage(null);
+                  if (errorMessage) {
+                    setErrorMessage(null);
+                    setErrorCode(null);
+                  }
                 }}
                 placeholder="Paste the complete job description, internship announcement, or offer email here... (e.g. title, responsibilities, compensation, registration instructions)"
                 className="w-full rounded-xl border border-ivory-300 bg-ivory-50/50 p-4 text-sm text-charcoal-900 placeholder:text-charcoal-400 focus:outline-none focus:ring-2 focus:ring-forest-600/20 focus:border-forest-700 transition-all font-mono leading-relaxed"
@@ -278,6 +337,8 @@ Payment must be remitted via UPI or wire transfer to our recruitment coordinator
                     ? 'border-forest-600 bg-forest-50/60'
                     : selectedFile
                     ? 'border-forest-400 bg-ivory-50'
+                    : isFileError
+                    ? 'border-rose-300 bg-rose-50/40 hover:border-rose-400 hover:bg-rose-50/60'
                     : 'border-ivory-300 bg-ivory-50/50 hover:border-forest-400 hover:bg-ivory-100/50'
                 }`}
               >
@@ -291,18 +352,47 @@ Payment must be remitted via UPI or wire transfer to our recruitment coordinator
                 />
 
                 <div className="flex flex-col items-center justify-center space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-forest-100 text-forest-800 flex items-center justify-center">
-                    <FileUp className="w-6 h-6" />
+                  <div
+                    className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${
+                      isFileError
+                        ? 'bg-rose-100 text-rose-700'
+                        : 'bg-forest-100 text-forest-800'
+                    }`}
+                  >
+                    {isFileError ? (
+                      <AlertCircle className="w-6 h-6 text-rose-600" />
+                    ) : (
+                      <FileUp className="w-6 h-6" />
+                    )}
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-charcoal-900">
-                      {selectedFile ? selectedFile.name : 'Click to select or drag & drop PDF document'}
+                    <p
+                      className={`text-sm font-semibold ${
+                        isFileError ? 'text-rose-900' : 'text-charcoal-900'
+                      }`}
+                    >
+                      {selectedFile
+                        ? selectedFile.name
+                        : isFileError
+                        ? 'Invalid File Selection'
+                        : 'Click to select or drag & drop PDF document'}
                     </p>
-                    <p className="text-xs text-charcoal-500 mt-1">
+                    <p
+                      className={`text-xs mt-1 max-w-md mx-auto ${
+                        isFileError ? 'text-rose-700 font-medium leading-relaxed' : 'text-charcoal-500'
+                      }`}
+                    >
                       {selectedFile
                         ? `${(selectedFile.size / 1024).toFixed(1)} KB • Digital PDF ready for analysis`
+                        : isFileError
+                        ? errorMessage
                         : 'Supports PDF offer letters or advertisements up to 10 MB'}
                     </p>
+                    {isFileError && (
+                      <p className="text-xs text-charcoal-500 mt-2 font-medium">
+                        Click or drag &amp; drop to select a valid PDF document
+                      </p>
+                    )}
                   </div>
                   {selectedFile && (
                     <button
@@ -310,6 +400,7 @@ Payment must be remitted via UPI or wire transfer to our recruitment coordinator
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedFile(null);
+                        setErrorMessage(null);
                         if (fileInputRef.current) fileInputRef.current.value = '';
                       }}
                       className="inline-flex items-center gap-1 text-xs text-rose-700 hover:text-rose-900 pt-2 font-medium"
@@ -337,10 +428,26 @@ Payment must be remitted via UPI or wire transfer to our recruitment coordinator
 
           {/* Error Message Box */}
           {errorMessage && (
-            <div className="rounded-xl p-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm flex items-start gap-3 animate-fade-in">
-              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div
+              className={`rounded-xl p-4 border text-xs sm:text-sm flex items-start gap-3 animate-fade-in ${
+                isUnrelatedError
+                  ? 'bg-amber-50 border-amber-200 text-amber-900'
+                  : 'bg-rose-50 border-rose-200 text-rose-800'
+              }`}
+            >
+              <AlertCircle
+                className={`w-5 h-5 shrink-0 mt-0.5 ${
+                  isUnrelatedError ? 'text-amber-600' : 'text-rose-600'
+                }`}
+              />
               <div className="space-y-1">
-                <span className="font-semibold">Analysis Failed</span>
+                <span className="font-semibold">
+                  {isFileError
+                    ? 'PDF Validation Error'
+                    : isUnrelatedError
+                    ? 'Content Relevance Notice'
+                    : 'Analysis Failed'}
+                </span>
                 <p className="leading-relaxed">{errorMessage}</p>
               </div>
             </div>

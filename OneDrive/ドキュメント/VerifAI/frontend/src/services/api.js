@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -20,6 +20,9 @@ export const formatApiError = (error) => {
       if (Array.isArray(data.detail)) {
         return data.detail.map((err) => err.msg || JSON.stringify(err)).join(', ');
       }
+      if (typeof data.detail === 'object' && data.detail !== null) {
+        return data.detail.message || JSON.stringify(data.detail);
+      }
       return String(data.detail);
     }
     return `Server returned error (${error.response.status})`;
@@ -38,7 +41,11 @@ export const analyzeText = async (text) => {
     const response = await apiClient.post('/api/analyze/text', { text });
     return response.data;
   } catch (error) {
-    throw new Error(formatApiError(error));
+    const err = new Error(formatApiError(error));
+    err.status = error.response?.status;
+    err.code = error.response?.data?.detail?.code || error.response?.data?.code;
+    err.detail = error.response?.data?.detail;
+    throw err;
   }
 };
 
@@ -57,7 +64,11 @@ export const analyzeFile = async (file) => {
     });
     return response.data;
   } catch (error) {
-    throw new Error(formatApiError(error));
+    const err = new Error(formatApiError(error));
+    err.status = error.response?.status;
+    err.code = error.response?.data?.detail?.code || error.response?.data?.code;
+    err.detail = error.response?.data?.detail;
+    throw err;
   }
 };
 

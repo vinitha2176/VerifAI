@@ -2,9 +2,9 @@
 
 from functools import lru_cache
 from pathlib import Path
-from typing import List
+from typing import Any, List, Union
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Base backend directory: .../backend
@@ -27,14 +27,28 @@ class Settings(BaseSettings):
     port: int = 8000
 
     # CORS configuration
-    cors_origins: List[str] = Field(
+    cors_origins: Union[List[str], str] = Field(
         default=[
             "http://localhost:3000",
             "http://localhost:5173",
+            "http://localhost:4173",
             "http://127.0.0.1:3000",
             "http://127.0.0.1:5173",
+            "http://127.0.0.1:4173",
         ]
     )
+
+    @field_validator("cors_origins", mode="after")
+    @classmethod
+    def assemble_cors_origins(cls, v: Any) -> List[str]:
+        """Parse comma-separated or JSON list strings into a list of origins."""
+        if isinstance(v, str):
+            v_str = v.strip()
+            if v_str.startswith("[") and v_str.endswith("]"):
+                import json
+                return json.loads(v_str)
+            return [origin.strip() for origin in v_str.split(",") if origin.strip()]
+        return list(v)
 
     # Database
     database_url: str = f"sqlite:///{BACKEND_DIR / 'verifai.db'}"

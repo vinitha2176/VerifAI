@@ -14,10 +14,59 @@ import {
   Loader2,
   Cpu,
   Layers,
-  History
+  History,
+  WifiOff,
+  RefreshCw
 } from 'lucide-react';
 import { getAnalysisDetail } from '../services/api';
 import { RiskBadge, PredictionBadge } from '../components/RiskBadge';
+
+/**
+ * Helper to distinguish network/server errors from genuine 404 / record not found responses
+ */
+const isNetworkOrServerError = (err) => {
+  if (!err) return false;
+
+  // Check explicit HTTP status if present on error object
+  if (err.status === 404 || err.response?.status === 404) {
+    return false;
+  }
+  if (err.status >= 500 || err.response?.status >= 500) {
+    return true;
+  }
+
+  const msg = (typeof err === 'string' ? err : err.message || '').toLowerCase();
+
+  // Explicit network connection, timeout, or server error patterns
+  if (
+    msg.includes('unable to connect') ||
+    msg.includes('network error') ||
+    msg.includes('failed to fetch') ||
+    msg.includes('connection refused') ||
+    msg.includes('connection') ||
+    msg.includes('econnrefused') ||
+    msg.includes('timeout') ||
+    msg.includes('server returned error (5') ||
+    msg.includes('internal server error') ||
+    msg.includes('bad gateway') ||
+    msg.includes('service unavailable') ||
+    msg.includes('gateway timeout')
+  ) {
+    return true;
+  }
+
+  // Explicit 404 / record not found patterns
+  if (
+    msg.includes('not found') ||
+    msg.includes('404') ||
+    msg.includes('no analysis record id')
+  ) {
+    return false;
+  }
+
+  // Treat any other unexpected communication/retrieval error as retryable
+  return true;
+};
 
 export const ResultsPage = () => {
   const { id } = useParams();
@@ -27,32 +76,61 @@ export const ResultsPage = () => {
   // If state was passed via navigate from AnalysePage, use it immediately
   const [analysis, setAnalysis] = useState(location.state?.result || null);
   const [loading, setLoading] = useState(!location.state?.result);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     let mounted = true;
-    if (!analysis && id) {
-      setLoading(true);
-      getAnalysisDetail(id)
-        .then((data) => {
-          if (mounted) {
-            setAnalysis(data);
-            setError(null);
-          }
-        })
-        .catch((err) => {
-          if (mounted) {
-            setError(err.message || 'Unable to retrieve analysis details.');
-          }
-        })
-        .finally(() => {
-          if (mounted) setLoading(false);
-        });
+
+    // If analysis was passed via navigation state and matches current ID (or no ID in route)
+    if (analysis && (!id || String(analysis.id) === String(id))) {
+      setLoading(false);
+      return;
     }
+
+    if (!id) {
+      setLoading(false);
+      setError('No analysis record ID was provided.');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    getAnalysisDetail(id)
+      .then((data) => {
+        if (mounted) {
+          setAnalysis(data);
+          setError(null);
+        }
+      })
+      .catch((err) => {
+        if (mounted) {
+          setError(err.message || 'Unable to retrieve analysis details.');
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+
     return () => {
       mounted = false;
     };
-  }, [id, analysis]);
+  }, [id]);
+
+  const handleRetry = async () => {
+    if (isRetrying || !id) return;
+    setIsRetrying(true);
+    try {
+      const data = await getAnalysisDetail(id);
+      setAnalysis(data);
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Unable to retrieve analysis details.');
+    } finally {
+      setIsRetrying(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -65,6 +143,58 @@ export const ResultsPage = () => {
   }
 
   if (error || !analysis) {
+    const isNetworkError = isNetworkOrServerError(error);
+
+    if (isNetworkError) {
+      return (
+        <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-6">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-700 border border-amber-200 flex items-center justify-center mx-auto">
+            <WifiOff className="w-6 h-6" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="font-serif text-2xl font-bold text-charcoal-900">
+              Connection or Server Error
+            </h2>
+            <p className="text-sm text-charcoal-600 max-w-md mx-auto">
+              {error || 'Unable to connect to the VerifAI backend server. Please verify the server is running.'}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={handleRetry}
+              disabled={isRetrying}
+              className="px-4 py-2 rounded-lg bg-forest-800 text-ivory-100 text-sm font-medium hover:bg-forest-900 transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+            >
+              {isRetrying ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Retrying...</span>
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Retry Analysis</span>
+                </>
+              )}
+            </button>
+            <Link
+              to="/history"
+              className="px-4 py-2 rounded-lg bg-ivory-200 text-charcoal-800 text-sm font-medium hover:bg-ivory-300 transition-colors"
+            >
+              View History
+            </Link>
+            <Link
+              to="/analyse"
+              className="px-4 py-2 rounded-lg bg-ivory-200 text-charcoal-800 text-sm font-medium hover:bg-ivory-300 transition-colors"
+            >
+              Analyse New Offer
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-6">
         <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-700 border border-rose-200 flex items-center justify-center mx-auto">

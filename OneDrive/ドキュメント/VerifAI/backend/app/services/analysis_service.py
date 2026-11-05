@@ -18,6 +18,7 @@ from app.schemas.analysis import (
     VERIFAI_DISCLAIMER,
 )
 from app.services.prediction import PredictionService
+from app.services.relevance_service import validate_recruitment_relevance
 from app.services.risk_engine import RiskEngine
 
 logger = logging.getLogger("VerifAI.Services.AnalysisService")
@@ -173,6 +174,9 @@ class AnalysisService:
         Returns:
             AnalysisResponse schema with comprehensive results and disclaimer.
         """
+        # Step 0: Validate recruitment relevance before ML inference or risk scoring
+        validate_recruitment_relevance(text)
+
         # Step 1: Execute genuine ML inference
         prediction_label, model_score = self.prediction_service.predict(text)
 
